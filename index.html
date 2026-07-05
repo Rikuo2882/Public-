@@ -109,18 +109,79 @@ const SK='dp-stocks-v4',HK='dp-hist-v2',PK='dp-proxy-url';
 const COLORS=['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#6366f1','#14b8a6','#e11d48'];
 
 const DEF_STOCKS=[
-  {id:1,ticker:'8058',name:'三菱商事',shares:100,buyPrice:3200,currentPrice:2890,annualDividend:150,exDates:['03-31','09-30']},
-  {id:2,ticker:'8316',name:'三井住友FG',shares:200,buyPrice:5800,currentPrice:9800,annualDividend:290,exDates:['03-31','09-30']},
-  {id:3,ticker:'8593',name:'三菱HCキャピタル',shares:500,buyPrice:620,currentPrice:1050,annualDividend:37,exDates:['03-31','09-30']},
-  {id:4,ticker:'8766',name:'東京海上HD',shares:100,buyPrice:3500,currentPrice:5200,annualDividend:121,exDates:['03-31']},
-  {id:5,ticker:'1605',name:'INPEX',shares:300,buyPrice:1200,currentPrice:2100,annualDividend:78,exDates:['03-31','09-30']},
-  {id:6,ticker:'5108',name:'ブリヂストン',shares:100,buyPrice:4200,currentPrice:5100,annualDividend:220,exDates:['06-30','12-31']},
-  {id:7,ticker:'2503',name:'キリンHD',shares:200,buyPrice:1900,currentPrice:2050,annualDividend:65,exDates:['06-30','12-31']},
+  {id:1,ticker:'8058',name:'三菱商事',shares:100,buyPrice:1000,currentPrice:2890,annualDividend:100,exDates:['03-31','09-30']},
+  {id:2,ticker:'8031',name:'三井物産',shares:100,buyPrice:1000,currentPrice:3100,annualDividend:100,exDates:['03-31','09-30']},
+  {id:3,ticker:'8001',name:'伊藤忠商事',shares:100,buyPrice:1000,currentPrice:6500,annualDividend:200,exDates:['03-31','09-30']},
+  {id:4,ticker:'8306',name:'三菱UFJ FG',shares:100,buyPrice:1000,currentPrice:1580,annualDividend:60,exDates:['03-31','09-30']},
+  {id:5,ticker:'8316',name:'三井住友FG',shares:100,buyPrice:1000,currentPrice:3800,annualDividend:120,exDates:['03-31','09-30']},
+  {id:6,ticker:'8411',name:'みずほFG',shares:100,buyPrice:1000,currentPrice:3600,annualDividend:130,exDates:['03-31','09-30']},
+];
+
+const DEF_HIST=[
+  {id:'d1',ticker:'8058',stockName:'三菱商事',date:'2025-12-05',amount:5000,memo:'中間配当'},
+  {id:'d2',ticker:'8058',stockName:'三菱商事',date:'2025-06-25',amount:5000,memo:'期末配当'},
+  {id:'d3',ticker:'8031',stockName:'三井物産',date:'2025-12-05',amount:5000,memo:'中間配当'},
+  {id:'d4',ticker:'8031',stockName:'三井物産',date:'2025-06-25',amount:5000,memo:'期末配当'},
+  {id:'d5',ticker:'8001',stockName:'伊藤忠商事',date:'2025-12-05',amount:10000,memo:'中間配当'},
+  {id:'d6',ticker:'8001',stockName:'伊藤忠商事',date:'2025-06-25',amount:10000,memo:'期末配当'},
+  {id:'d7',ticker:'8306',stockName:'三菱UFJ FG',date:'2025-12-05',amount:3000,memo:'中間配当'},
+  {id:'d8',ticker:'8306',stockName:'三菱UFJ FG',date:'2025-06-25',amount:3000,memo:'期末配当'},
+  {id:'d9',ticker:'8316',stockName:'三井住友FG',date:'2025-12-05',amount:6000,memo:'中間配当'},
+  {id:'d10',ticker:'8316',stockName:'三井住友FG',date:'2025-06-25',amount:6000,memo:'期末配当'},
+  {id:'d11',ticker:'8411',stockName:'みずほFG',date:'2025-12-05',amount:6500,memo:'中間配当'},
+  {id:'d12',ticker:'8411',stockName:'みずほFG',date:'2025-06-25',amount:6500,memo:'期末配当'},
 ];
 
 function load(k,d){try{const s=localStorage.getItem(k);return s?JSON.parse(s):d}catch(e){return d}}
 function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
-let stocks=load(SK,DEF_STOCKS),hist=load(HK,[]);
+
+// ── 旧バージョンからのデータ自動引き継ぎ ──────
+function migrateOldData(){
+  // 既に新形式のデータがあれば何もしない
+  if(localStorage.getItem(SK))return;
+  // 旧バージョンの保存場所を新しい順に探す
+  const oldStockKeys=['dividend-portfolio-v3','dividend-portfolio-v2','dividend-portfolio-v1'];
+  const oldHistKeys=['dividend-history-v1'];
+  let oldStocks=null;
+  for(const k of oldStockKeys){
+    const s=localStorage.getItem(k);
+    if(s){try{oldStocks=JSON.parse(s);break}catch(e){}}
+  }
+  if(!oldStocks)return;
+  let oldHist=[];
+  for(const k of oldHistKeys){
+    const h=localStorage.getItem(k);
+    if(h){try{oldHist=JSON.parse(h);break}catch(e){}}
+  }
+  // 旧データのreceivedDividend（手入力の受取配当累計）を履歴に変換
+  const migratedHist=[...oldHist];
+  oldStocks.forEach(s=>{
+    if(s.receivedDividend&&s.receivedDividend>0){
+      // 既に履歴がある銘柄の合計と比較し、差額だけ「移行データ」として追加
+      const histSum=oldHist.filter(h=>h.ticker===s.ticker).reduce((a,h)=>a+h.amount,0);
+      const diff=s.receivedDividend-histSum;
+      if(diff>0){
+        migratedHist.push({
+          id:'migrated-'+s.ticker,
+          ticker:s.ticker,
+          stockName:s.name,
+          date:new Date().toISOString().slice(0,10),
+          amount:diff,
+          memo:'旧バージョンからの引き継ぎ'
+        });
+      }
+    }
+    delete s.receivedDividend;
+  });
+  localStorage.setItem(SK,JSON.stringify(oldStocks));
+  localStorage.setItem(HK,JSON.stringify(migratedHist));
+  setTimeout(()=>{
+    try{showToast('✓ 以前のデータを自動で引き継ぎました')}catch(e){}
+  },500);
+}
+migrateOldData();
+
+let stocks=load(SK,DEF_STOCKS),hist=load(HK,DEF_HIST);
 const today=new Date();
 
 function getReceivedDiv(ticker){return hist.filter(h=>h.ticker===ticker).reduce((a,h)=>a+h.amount,0)}
@@ -492,7 +553,7 @@ function renderSettings(){
     </div>`;
 }
 function saveProxy(){const url=document.getElementById('proxy-url').value.trim();if(url)localStorage.setItem(PK,url);else localStorage.removeItem(PK);renderSettings();showToast(url?'✓ 株価取得URLを保存しました':'URLを削除しました')}
-function resetAll(){if(!confirm('本当にリセットしますか？'))return;localStorage.removeItem(SK);localStorage.removeItem(HK);stocks=DEF_STOCKS;hist=[];save(SK,stocks);renderAll();showToast('リセットしました')}
+function resetAll(){if(!confirm('本当にリセットしますか？'))return;localStorage.removeItem(SK);localStorage.removeItem(HK);stocks=JSON.parse(JSON.stringify(DEF_STOCKS));hist=JSON.parse(JSON.stringify(DEF_HIST));save(SK,stocks);save(HK,hist);renderAll();showToast('リセットしました')}
 
 renderAll();
 </script>
